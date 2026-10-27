@@ -1,25 +1,46 @@
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import axios from "axios";
 import "./App.css";
 
-const initialStudents = [
-  { id: 1, name: "Aarav Patil", rollNo: "101", course: "BCA", year: "2nd Year", email: "aarav@example.com" },
-  { id: 2, name: "Priya Sharma", rollNo: "102", course: "BSc CS", year: "3rd Year", email: "priya@example.com" },
-  { id: 3, name: "Rohan Deshmukh", rollNo: "103", course: "BCA", year: "1st Year", email: "rohan@example.com" },
-];
+const API_URL = "http://localhost:5000/api/students";
+
+const emptyForm = {
+  name: "",
+  rollNo: "",
+  course: "",
+  year: "",
+  email: "",
+};
 
 function App() {
-  const [students, setStudents] = useState(initialStudents);
+  const [students, setStudents] = useState([]);
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
-  const [form, setForm] = useState({
-    name: "",
-    rollNo: "",
-    course: "",
-    year: "",
-    email: "",
-  });
+  const [form, setForm] = useState(emptyForm);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function loadStudents() {
+    try {
+      setError("");
+      const response = await axios.get(API_URL);
+      setStudents(response.data);
+    } catch (err) {
+      setError(
+        err.response?.data?.message ||
+        "Could not load students. Check that the backend is running."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadStudents();
+  }, []);
 
   const filteredStudents = students.filter((student) =>
     `${student.name} ${student.rollNo} ${student.course}`
@@ -28,8 +49,9 @@ function App() {
   );
 
   function openAddForm() {
-    setForm({ name: "", rollNo: "", course: "", year: "", email: "" });
+    setForm({ ...emptyForm });
     setEditingId(null);
+    setError("");
     setShowForm(true);
   }
 
@@ -41,7 +63,8 @@ function App() {
       year: student.year,
       email: student.email,
     });
-    setEditingId(student.id);
+    setEditingId(student._id);
+    setError("");
     setShowForm(true);
   }
 
@@ -50,36 +73,48 @@ function App() {
     setForm((previous) => ({ ...previous, [name]: value }));
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
+    setSaving(true);
+    setError("");
 
-    if (editingId !== null) {
-      setStudents((previous) =>
-        previous.map((student) =>
-          student.id === editingId
-            ? { ...form, id: editingId }
-            : student
-        )
+    try {
+      if (editingId) {
+        await axios.put(`${API_URL}/${editingId}`, form);
+      } else {
+        await axios.post(API_URL, form);
+      }
+
+      setShowForm(false);
+      setEditingId(null);
+      setForm({ ...emptyForm });
+      await loadStudents();
+    } catch (err) {
+      setError(
+        err.response?.data?.message ||
+        "Could not save student. Please try again."
       );
-    } else {
-      setStudents((previous) => [
-        ...previous,
-        { ...form, id: Date.now() },
-      ]);
+    } finally {
+      setSaving(false);
     }
-
-    setShowForm(false);
-    setEditingId(null);
   }
 
-  function deleteStudent(id) {
+  async function deleteStudent(id) {
     const confirmed = window.confirm(
       "Are you sure you want to delete this student?"
     );
 
-    if (confirmed) {
-      setStudents((previous) =>
-        previous.filter((student) => student.id !== id)
+    if (!confirmed) return;
+
+    setError("");
+
+    try {
+      await axios.delete(`${API_URL}/${id}`);
+      await loadStudents();
+    } catch (err) {
+      setError(
+        err.response?.data?.message ||
+        "Could not delete student. Please try again."
       );
     }
   }
@@ -127,17 +162,48 @@ function App() {
           </button>
         </section>
 
+        {error && (
+          <div
+            role="alert"
+            style={{
+              padding: "12px 16px",
+              marginBottom: "18px",
+              borderRadius: "8px",
+              background: "#fff0f0",
+              color: "#b42318",
+              fontSize: "13px",
+            }}
+          >
+            {error}
+            <button
+              onClick={() => setError("")}
+              style={{
+                float: "right",
+                border: 0,
+                background: "transparent",
+                color: "inherit",
+              }}
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
         <section className="stats-grid">
           <div className="stat-card">
             <span className="stat-icon blue">♙</span>
             <p>Total Students</p>
             <h2>{students.length}</h2>
           </div>
+
           <div className="stat-card">
             <span className="stat-icon green">✓</span>
             <p>Courses</p>
-            <h2>{new Set(students.map((s) => s.course)).size}</h2>
+            <h2>
+              {new Set(students.map((student) => student.course)).size}
+            </h2>
           </div>
+
           <div className="stat-card">
             <span className="stat-icon purple">⌕</span>
             <p>Search Results</p>
@@ -151,6 +217,7 @@ function App() {
               <h2>All Students</h2>
               <p>View and manage student records</p>
             </div>
+
             <input
               className="search-input"
               type="search"
@@ -172,46 +239,59 @@ function App() {
                   <th>ACTIONS</th>
                 </tr>
               </thead>
-              <tbody>
-                {filteredStudents.map((student) => (
-                  <tr key={student.id}>
-                    <td>
-                      <div className="student-name">
-                        <div className="student-avatar">
-                          {student.name.charAt(0).toUpperCase()}
-                        </div>
-                        <strong>{student.name}</strong>
-                      </div>
-                    </td>
-                    <td>{student.rollNo}</td>
-                    <td><span className="course-tag">{student.course}</span></td>
-                    <td>{student.year}</td>
-                    <td>{student.email}</td>
-                    <td>
-                      <div className="actions">
-                        <button
-                          className="edit-btn"
-                          onClick={() => openEditForm(student)}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          className="delete-btn"
-                          onClick={() => deleteStudent(student.id)}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
 
-                {filteredStudents.length === 0 && (
+              <tbody>
+                {loading ? (
                   <tr>
                     <td colSpan="6" className="empty-state">
-                      No students found.
+                      Loading students...
                     </td>
                   </tr>
+                ) : filteredStudents.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" className="empty-state">
+                      No students found. Add your first student.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredStudents.map((student) => (
+                    <tr key={student._id}>
+                      <td>
+                        <div className="student-name">
+                          <div className="student-avatar">
+                            {student.name.charAt(0).toUpperCase()}
+                          </div>
+                          <strong>{student.name}</strong>
+                        </div>
+                      </td>
+
+                      <td>{student.rollNo}</td>
+                      <td>
+                        <span className="course-tag">
+                          {student.course}
+                        </span>
+                      </td>
+                      <td>{student.year}</td>
+                      <td>{student.email}</td>
+
+                      <td>
+                        <div className="actions">
+                          <button
+                            className="edit-btn"
+                            onClick={() => openEditForm(student)}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            className="delete-btn"
+                            onClick={() => deleteStudent(student._id)}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
                 )}
               </tbody>
             </table>
@@ -223,9 +303,10 @@ function App() {
             <section className="student-modal">
               <div className="modal-heading">
                 <div>
-                  <h2>{editingId !== null ? "Edit Student" : "Add Student"}</h2>
+                  <h2>{editingId ? "Edit Student" : "Add Student"}</h2>
                   <p>Enter the student's details below.</p>
                 </div>
+
                 <button
                   className="close-btn"
                   type="button"
@@ -307,11 +388,21 @@ function App() {
                     className="secondary-btn"
                     type="button"
                     onClick={() => setShowForm(false)}
+                    disabled={saving}
                   >
                     Cancel
                   </button>
-                  <button className="primary-btn" type="submit">
-                    {editingId !== null ? "Save Changes" : "Add Student"}
+
+                  <button
+                    className="primary-btn"
+                    type="submit"
+                    disabled={saving}
+                  >
+                    {saving
+                      ? "Saving..."
+                      : editingId
+                        ? "Save Changes"
+                        : "Add Student"}
                   </button>
                 </div>
               </form>
