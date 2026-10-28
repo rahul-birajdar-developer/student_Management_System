@@ -99,12 +99,19 @@ async function startServer() {
             throw new Error("MONGO_URI is missing from the .env file.");
         }
 
-        await mongoose.connect(process.env.MONGO_URI);
-        console.log("MongoDB connected successfully!");
+        await mongoose
+            .connect(process.env.MONGO_URI)
+            .then(() => {
+                console.log("MongoDB connected successfully");
 
-        app.listen(PORT, () => {
-            console.log(`Server running at http://localhost:${PORT}`);
-        });
+                app.listen(process.env.PORT || 5000, () => {
+                    console.log("Server is running");
+                });
+            })
+            .catch((error) => {
+                console.error("MongoDB connection error:", error.message);
+                process.exit(1);
+            });
     } catch (error) {
         console.error("Startup error:", error.message);
         process.exit(1);
